@@ -239,9 +239,21 @@ class MPAIL2Runner:
                         wandb.log({"Rollouts Video": wandb.Video(path_to_vid)}, commit=False)
                         self.rollouts_vid.reset()
 
-                # Save model
-                if it % self.log_cfg.checkpoint_every == 0:
-                    self.save(postfix=f"{it}")
+            # Save model checkpoint (always, regardless of logger)
+            if self.log_dir is not None and self.log_cfg.checkpoint_every and it % self.log_cfg.checkpoint_every == 0:
+                self.save(postfix=f"{it}")
+
+            # Print progress to stdout every iteration
+            print(
+                f"[iter {it:4d}/{tot_iter}] "
+                f"fps={train_stats.get('Perf/fps', 0):4.0f}  "
+                f"rew={train_stats.get('Env/mean_reward', 0):.4f}  "
+                f"ep_ret={train_stats.get('Env/ep_mean_return', 0):.3f}  "
+                f"disc_demo={train_stats.get('Reward/mean_demo_reward', float('nan')):.3f}  "
+                f"disc_gen={train_stats.get('Reward/mean_gen_reward', float('nan')):.3f}  "
+                f"dyn_loss={train_stats.get('Dyn/mean_loss', float('nan')):.4f}",
+                flush=True,
+            )
 
         # Save the final model after training
         if self.log_dir is not None:

@@ -13,7 +13,7 @@ ENV_ALIASES = (
     "omnireset-peg",
     "peg_in_hole",
     "peg-in-hole",
-    "OmniReset-Ur5eRobotiq2f85-RelCartesianOSC-State-Play-v0",
+    "OmniReset-Ur5eRobotiq2f85-RelCartesianOSC-State-Finetune-Play-v0",
 )
 ENV_SPEC = {
     "suite": "isaac_image",
@@ -27,7 +27,7 @@ ENV_SPEC = {
 
 @dataclass
 class OmniResetPegTrainConfig(IsaacHydraTrainConfig):
-    task: str = "OmniReset-Ur5eRobotiq2f85-RelCartesianOSC-State-Play-v0"
+    task: str = "OmniReset-Ur5eRobotiq2f85-RelCartesianOSC-State-Finetune-Play-v0"
     num_envs: int = 32
     log: LogConfig = field(
         default_factory=lambda: LogConfig(

@@ -75,17 +75,27 @@ def _check_memory() -> None:
 
 
 def _check_repo_layout() -> None:
-    root = Path(__file__).resolve().parents[1].parent
-    expected = {
-        "mpail2": root / "mpail2",
-        "UWLab": root / "UWLab",
-        "WheeledLab-research": root / "WheeledLab-research",
-    }
-    missing = [name for name, path in expected.items() if not path.exists()]
-    if missing:
-        _print_result("Workspace layout", False, f"Missing: {', '.join(missing)}")
+    repo_root = Path(__file__).resolve().parents[1]
+    workspace_root = repo_root.parent
+
+    has_mpail2_repo = (repo_root / "mpail2").exists() and (repo_root / "pyproject.toml").exists()
+    if not has_mpail2_repo:
+        _print_result("Workspace layout", False, f"Could not find mpail2 package at {repo_root}")
         return
-    _print_result("Workspace layout", True, "Found mpail2, UWLab, and WheeledLab-research")
+
+    siblings = {
+        "UWLab": workspace_root / "UWLab",
+        "WheeledLab-research": workspace_root / "WheeledLab-research",
+    }
+    missing = [name for name, path in siblings.items() if not path.exists()]
+    if missing:
+        _print_result(
+            "Workspace layout",
+            None,
+            f"Found mpail2 repo; missing optional sibling(s): {', '.join(missing)}",
+        )
+        return
+    _print_result("Workspace layout", True, "Found mpail2 repo plus UWLab and WheeledLab-research siblings")
 
 
 def _check_import(name: str) -> None:

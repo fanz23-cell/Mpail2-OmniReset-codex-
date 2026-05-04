@@ -20,9 +20,7 @@ def _effective_action_space(env: gym.Env) -> gym.Space:
 
 def _action_dim(space: gym.Space) -> int:
     if isinstance(space, Box):
-        if len(space.shape) == 1:
-            return int(space.shape[0])
-        return int(space_utils.flatdim(space))
+        return int(space.shape[-1])  # works for (action_dim,) and batched (num_envs, action_dim)
     return int(space_utils.flatdim(space))
 
 
@@ -55,6 +53,12 @@ def sync_learner_dims_from_env(learner_cfg: defs.LearnerConfig, env: gym.Env) ->
                         coder.H, coder.W, coder.C = h2, w2, c0
     elif isinstance(obs_space, Box) and isinstance(enc, defs.MLPCoderConfig):
         enc.input_dim = int(space_utils.flatdim(obs_space))
+    elif isinstance(obs_space, DictSpace) and isinstance(enc, defs.MLPCoderConfig):
+        key = getattr(enc, "obs_key", "policy")
+        if key in obs_space.spaces and isinstance(obs_space.spaces[key], Box):
+            sub = obs_space.spaces[key]
+            # obs_space may be batched (num_envs, obs_dim) — take only the last (per-step) dim
+            enc.input_dim = int(sub.shape[-1])
 
     lc.planner_cfg.__post_init__()
     return lc

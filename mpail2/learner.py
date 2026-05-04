@@ -287,12 +287,14 @@ class MPAIL2Learner:
             demo_obs_flat = {k: v.flatten(start_dim=0, end_dim=1) for k, v in demo_obs_traj.items()}
             demo_next_obs_flat = {k: v.flatten(start_dim=0, end_dim=1) for k, v in demo_next_obs_traj.items()}
 
-            # (1) UPDATE DYNAMICS
+            # (1) UPDATE DYNAMICS (agent data + demo data combined)
             _start = time.time()
-            self._mean_stats['Dyn/mean_loss'] += self.update_dynamics( # TODO: dont duplicate encoding
+            self._mean_stats['Dyn/mean_loss'] += self.update_dynamics(
                 obs_batch_traj=replay_obs_traj,
                 next_obs_batch_traj=replay_next_obs_traj,
                 actions_batch_traj=replay_actions_traj,
+                demo_obs_traj=demo_obs_traj,
+                demo_next_obs_traj=demo_next_obs_traj,
             )
             self._tot_stats['Dyn/learn_time'] += time.time() - _start
 
@@ -376,36 +378,56 @@ class MPAIL2Learner:
     def update_dynamics(
         self,
         obs_batch_traj: torch.Tensor,
-        next_obs_batch_traj: torch.Tensor, # For optional decoding loss
+        next_obs_batch_traj: torch.Tensor,
         actions_batch_traj: torch.Tensor,
+        demo_obs_traj: Optional[Dict[str, torch.Tensor]] = None,
+        demo_next_obs_traj: Optional[Dict[str, torch.Tensor]] = None,
     ):
+        # Concatenate agent + demo trajectories so encoder sees expert data too
+        if demo_obs_traj is not None and demo_next_obs_traj is not None:
+            shared_keys = [k for k in obs_batch_traj if k in demo_obs_traj]
+            obs_combined = {k: torch.cat([obs_batch_traj[k], demo_obs_traj[k]], dim=0)
+                            for k in shared_keys}
+            next_obs_combined = {k: torch.cat([next_obs_batch_traj[k], demo_next_obs_traj[k]], dim=0)
+                                 for k in shared_keys}
+            # Demo has no actions; use zeros as placeholder (only JEP loss on agent portion)
+            demo_actions = torch.zeros(
+                demo_obs_traj[next(iter(demo_obs_traj))].shape[0],
+                actions_batch_traj.shape[1],
+                actions_batch_traj.shape[2],
+                device=self.device, dtype=self.dtype,
+            )
+            actions_combined = torch.cat([actions_batch_traj, demo_actions], dim=0)
+            agent_batch_size = obs_batch_traj[next(iter(obs_batch_traj))].shape[0]
+        else:
+            obs_combined = obs_batch_traj
+            next_obs_combined = next_obs_batch_traj
+            actions_combined = actions_batch_traj
+            agent_batch_size = obs_batch_traj[next(iter(obs_batch_traj))].shape[0]
 
-        # TODO: only encode first observation in traj
-        latent_batch_traj = self._encoder(obs_batch_traj)
+        # Encode the combined batch (agent + demo); target next-latent is detached
+        latent_combined_traj = self._encoder(obs_combined)
         with torch.no_grad():
-            next_latent_batch_traj = self._encoder(next_obs_batch_traj)
+            next_latent_combined_traj = self._encoder(next_obs_combined)
 
-        _H = actions_batch_traj.shape[1]
+        _H = actions_combined.shape[1]
         rho = self.dynamics_learner_cfg.rho
         _rhos = rho ** torch.arange(_H, device=self.device)
 
-        # Get initial latent state z0
-        z0 = latent_batch_traj[:, 0, :]
+        z0 = latent_combined_traj[:, 0, :]
+        pred_latents = self._dynamics(z0=z0, controls=actions_combined)
 
-        pred_latents = self._dynamics( # [batch_size, H+1, latent_dim]
-            z0=z0, controls=actions_batch_traj,
-        )
-
-        # JEP loss: L = sum_t rho^t || z_{t+1} - f(z_t, a_t) ||_2^2
-        _jep_se = (pred_latents[:, 1:, :] - next_latent_batch_traj.detach()).pow(2)
+        # JEP loss on agent portion only (demo has placeholder zero actions)
+        _jep_se = (pred_latents[:agent_batch_size, 1:, :] -
+                   next_latent_combined_traj[:agent_batch_size].detach()).pow(2)
         loss = (_rhos[..., None] * _jep_se).mean()
 
         # Decoder for visualization if specified
         if self._decoder:
             _recon_loss = torch.tensor(0.0, device=self.device, dtype=self.dtype)
-            for obs_key, obs in next_obs_batch_traj.items():
+            for obs_key in next_obs_batch_traj:
                 _recon_loss += F.mse_loss(
-                    self._decoder(next_latent_batch_traj.detach())[obs_key],
+                    self._decoder(next_latent_combined_traj[:agent_batch_size].detach())[obs_key],
                     next_obs_batch_traj[obs_key],
                 )
         else:
@@ -416,7 +438,7 @@ class MPAIL2Learner:
         self._dyn_opt.zero_grad()
         loss.backward()
         if self._decoder:
-            _recon_loss.backward() # Backprop through decoder
+            _recon_loss.backward()
         self._dyn_opt.step()
 
         return loss.item()

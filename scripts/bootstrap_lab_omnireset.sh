@@ -151,16 +151,9 @@ run_env python -m pip install --no-cache-dir \
 
 run_env python -m pip install --no-cache-dir --no-deps -e "${REPO_ROOT}"
 
-ACTIVATE_DIR="$(conda run -n "${ENV_NAME}" python - <<'PY'
-import os
-print(os.path.join(os.environ["CONDA_PREFIX"], "etc", "conda", "activate.d"))
-PY
-)"
-DEACTIVATE_DIR="$(conda run -n "${ENV_NAME}" python - <<'PY'
-import os
-print(os.path.join(os.environ["CONDA_PREFIX"], "etc", "conda", "deactivate.d"))
-PY
-)"
+ENV_PREFIX="$(conda run -n "${ENV_NAME}" python -c 'import sys; print(sys.prefix)')"
+ACTIVATE_DIR="${ENV_PREFIX}/etc/conda/activate.d"
+DEACTIVATE_DIR="${ENV_PREFIX}/etc/conda/deactivate.d"
 
 mkdir -p "${ACTIVATE_DIR}" "${DEACTIVATE_DIR}"
 cat > "${ACTIVATE_DIR}/omnireset_env.sh" <<EOF

@@ -224,7 +224,7 @@ class Planner(torch.nn.Module):
             self._prev_z[reset_inds] = 0.
             self._last_actions[reset_inds] = 0.
 
-        self.sampling.reset_iter_state()
+        self.sampling.reset_iter_state(prev_controls=self._opt_controls, reset_idx=reset_inds)
 
     def step(self, obs, use_prev_opt:bool=True, deterministic:bool=False) -> torch.Tensor:
         '''
@@ -241,7 +241,7 @@ class Planner(torch.nn.Module):
         else:
             self._opt_controls[:] = 0.
 
-        self.sampling.reset_iter_state()
+        self.sampling.reset_iter_state(prev_controls=self._opt_controls)
 
         for i in range(self.cfg.opt_iters - 1):
             # Subsequent optimization uses previous optimal controls

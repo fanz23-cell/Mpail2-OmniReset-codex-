@@ -12,10 +12,16 @@ import mpail2.configs.defs as defs
 class OmniResetStatePlannerConfig(defs.PlannerConfig):
     action_dim: int = 7
     seed: int = 0
+    num_elites: int = 32
     encoder_cfg: defs.MLPCoderConfig = field(
         default_factory=lambda: defs.MLPCoderConfig(
             obs_key="policy",
-            input_dim=135,
+            input_dim=215,
+        )
+    )
+    sampling_cfg: defs.PolicySamplingConfig = field(
+        default_factory=lambda: defs.PolicySamplingConfig(
+            num_rollouts=256,
         )
     )
 
@@ -31,3 +37,14 @@ class OmniResetStateLearnerConfig(defs.LearnerConfig):
         default_factory=lambda: ObsNormalizerCfg(normalization_type="fixed")
     )
     planner_cfg: defs.PlannerConfig = field(default_factory=OmniResetStatePlannerConfig)
+    # target_entropy = -action_dim (7 for OmniReset); default in defs is -3 (for Franka Push)
+    policy_learner_cfg: defs.PolicyLearnerConfig = field(
+        default_factory=lambda: defs.PolicyLearnerConfig(target_entropy=-7.0)
+    )
+    # With 32 envs * 160 steps = 5120 samples/iter, replay_ratio=1.0 gives 5120 disc updates/iter
+    # (vs ~100 for Franka 1-env setup). Cap to ~100 updates to prevent discriminator divergence.
+    replay_ratio: float = 100.0 / (32 * 160)  # ≈ 0.0195
+    # WGAN-GP standard coefficient is 10.0; default 0.1 is too small to constrain Lipschitz
+    reward_learner_cfg: defs.RewardLearnerConfig = field(
+        default_factory=lambda: defs.RewardLearnerConfig(gp_coeff=10.0)
+    )
